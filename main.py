@@ -28,6 +28,7 @@ def start(bot, update, client_id, client_secret):
 
 
 def product_detail(bot, update, client_id, client_secret):
+
     query = update.callback_query
 
     product_id = query.data
@@ -38,13 +39,13 @@ def product_detail(bot, update, client_id, client_secret):
     image_id = product['data']['relationships']['main_image']['data']['id']
     image_url = get_file(access_token, image_id)['data']['link']['href']
 
-    description = textwrap.dedent(product['data']['attributes']['description'])
+    description = product['data']['attributes']['description']
+    description = description.replace('\n', '')
     name = product['data']['attributes']['name']
-
-    pprint(product)
+    print(description)
 
     message = textwrap.dedent(
-        f"""
+        fr"""
         {name}
         
         {description}
@@ -70,11 +71,18 @@ def go_back(bot, update, client_id, client_secret):
     for product in products['data']:
         keyboard.append([InlineKeyboardButton(product['attributes']['name'], callback_data=product['id'])])
 
+    message = textwrap.dedent(
+        """
+        Внимание, внимание!
+        Открывается веселое гуляние!
+        Торопись, честной народ,
+        Тебя ярмарка зовет!
+        """
+    )
+
     reply_markup = InlineKeyboardMarkup(keyboard)
-    bot.edit_message_text(text="Главное меню",
-                          chat_id=query.message.chat_id,
-                          message_id=query.message.message_id,
-                          reply_markup=reply_markup)
+    bot.send_message(text=message, chat_id=query.message.chat_id, reply_markup=reply_markup)
+    bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
 
     return "HANDLE_MENU"
 
