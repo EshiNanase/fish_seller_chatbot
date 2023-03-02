@@ -9,7 +9,7 @@ from telegram.ext import Filters, Updater
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from functools import partial
-from elasticpath_utls import get_products, get_access_token, get_product, get_file
+from elasticpath_utls import get_products, get_access_token, get_product, get_file, get_stock, add_products_to_cart
 from pprint import pprint
 
 
@@ -18,22 +18,33 @@ def start(bot, update, client_id, client_secret):
     access_token = get_access_token(client_id, client_secret)
     products = get_products(access_token)
 
+    message = textwrap.dedent(
+        """
+        Внимание, внимание!
+        Открывается веселое гуляние!
+        Торопись, честной народ,
+        Тебя ярмарка зовет!
+        """
+    )
+
     keyboard = []
     for product in products['data']:
         keyboard.append([InlineKeyboardButton(product['attributes']['name'], callback_data=product['id'])])
+    keyboard.append([InlineKeyboardButton('Корзина', callback_data='basket')])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text(text='Привет!', reply_markup=reply_markup)
+    update.message.reply_text(text=message, reply_markup=reply_markup)
     return "HANDLE_MENU"
 
 
 def product_detail(bot, update, client_id, client_secret):
 
     query = update.callback_query
+    data = query.data.split(':::')
 
-    product_id = query.data
-
+    product_id = data[0]
     access_token = get_access_token(client_id, client_secret)
+
     product = get_product(access_token, product_id)
 
     image_id = product['data']['relationships']['main_image']['data']['id']
@@ -41,22 +52,35 @@ def product_detail(bot, update, client_id, client_secret):
 
     description = product['data']['attributes']['description']
     description = description.replace('\n', '')
+
     name = product['data']['attributes']['name']
-    print(description)
+    price = product['data']['meta']['display_price']['with_tax']['formatted']
+    stock = get_stock(access_token, product_id)['data']['available']
 
     message = textwrap.dedent(
         fr"""
         {name}
         
+        Price: {price}
+        Stock: {stock} kg
+        
         {description}
         """
     )
 
-    keyboard = [[InlineKeyboardButton('Назад', callback_data='back')]]
+    keyboard = [
+        [
+            InlineKeyboardButton('1 kg', callback_data=f'{product_id}:::1'),
+            InlineKeyboardButton('5 kg', callback_data=f'{product_id}:::5'),
+            InlineKeyboardButton('10 kg', callback_data=f'{product_id}:::10')
+         ],
+        [InlineKeyboardButton('Назад', callback_data='back')]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     bot.send_photo(caption=message, photo=image_url, chat_id=query.message.chat_id, reply_markup=reply_markup)
     bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
+
     return "HANDLE_DESCRIPTION"
 
 
@@ -65,6 +89,15 @@ def go_back(bot, update, client_id, client_secret):
     query = update.callback_query
 
     access_token = get_access_token(client_id, client_secret)
+
+    if query.data != 'back':
+        data = query.data.split(':::')
+        product_id = data[0]
+        quantity = int(data[1])
+        response = add_products_to_cart(access_token, query.message.chat_id, product_id, quantity)
+        pprint(response)
+        return "HANDLE_MENU"
+
     products = get_products(access_token)
 
     keyboard = []
