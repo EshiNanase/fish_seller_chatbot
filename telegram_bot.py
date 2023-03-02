@@ -9,7 +9,7 @@ from telegram.ext import Filters, Updater
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from functools import partial
-from elasticpath_utls import get_products, get_access_token, get_product, get_file, get_stock, add_products_to_cart, get_cart_items, delete_cart_item
+from elasticpath_utls import get_products, get_access_token, get_product, get_file, get_stock, add_products_to_cart, get_cart_items, delete_cart_item, create_customer
 from pprint import pprint
 
 
@@ -46,9 +46,9 @@ def product_detail(bot, update, client_id, client_secret):
 
     if 'basket' in data:
         cart_items = get_cart_items(access_token, query.message.chat_id)
-        pprint(cart_items)
+
         message = ''
-        keyboard = []
+        keyboard = [[InlineKeyboardButton('Оплатить', callback_data='payment')]]
         for product in cart_items['data']:
             count = cart_items['data'].index(product) + 1
             price = int(product['unit_price']['amount'])/100
@@ -155,13 +155,22 @@ def basket(bot, update, client_id, client_secret):
                               )
         return "HANDLE_MENU"
 
+    if data == 'payment':
+        message = 'Отправляй почту, дружище (o･ω･o)'
+        bot.edit_message_text(text=message,
+                              chat_id=query.message.chat_id,
+                              message_id=query.message.message_id
+                              )
+
+        return "WAITING_EMAIL"
+
     delete_cart_item(access_token, query.message.chat_id, data)
 
     cart_items = get_cart_items(access_token, query.message.chat_id)
 
-    pprint(cart_items)
     message = ''
     keyboard = []
+
     for product in cart_items['data']:
         count = cart_items['data'].index(product) + 1
         price = int(product['unit_price']['amount']) / 100
@@ -194,6 +203,17 @@ def basket(bot, update, client_id, client_secret):
                           reply_markup=reply_markup
                           )
     return "HANDLE_BASKET"
+
+
+def waiting_email(bot, update, client_id, client_secret):
+
+    access_token = get_access_token(client_id, client_secret)
+
+    email = update.message.text
+    chat_id = update.message.chat_id
+    customer = create_customer(access_token, chat_id, email)
+    update.message.reply_text(text=f'Вы отправили мне эту почту {email}')
+    start(bot, update, client_id, client_secret)
 
 
 def go_back(bot, update, client_id, client_secret):
@@ -238,6 +258,7 @@ def handle_users_reply(bot, update, client_id, client_secret):
     product_detail_credentials = partial(product_detail, client_id=client_id, client_secret=client_secret)
     go_back_credentials = partial(go_back, client_id=client_id, client_secret=client_secret)
     basket_credentials = partial(basket, client_id=client_id, client_secret=client_secret)
+    waiting_email_credentials = partial(waiting_email, client_id=client_id, client_secret=client_secret)
 
     if update.message:
         user_reply = update.message.text
@@ -255,7 +276,8 @@ def handle_users_reply(bot, update, client_id, client_secret):
         'START': start_credentials,
         'HANDLE_MENU': product_detail_credentials,
         'HANDLE_DESCRIPTION': go_back_credentials,
-        'HANDLE_BASKET': basket_credentials
+        'HANDLE_BASKET': basket_credentials,
+        'WAITING_EMAIL': waiting_email_credentials
     }
     state_handler = states_functions[user_state]
     try:

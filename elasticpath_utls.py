@@ -53,6 +53,21 @@ def delete_cart_item(token, chat_id, product_id):
     return response.json()
 
 
+def create_customer(token, chat_id, email):
+    headers = {
+        'Authorization': f'Bearer {token}',
+    }
+    payload = {
+        'data': {
+            'type': 'customer',
+            'name': str(chat_id),
+            'email': email
+        }
+    }
+    response = requests.post(f'https://api.moltin.com/v2/customers', headers=headers, json=payload)
+    return response.json()
+
+
 def get_price_book(token, price_book_id):
     headers = {
         'Authorization': f'Bearer {token}',
