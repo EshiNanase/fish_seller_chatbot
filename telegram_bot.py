@@ -49,7 +49,7 @@ def send_basket(cart_items):
         quantity = int(product['quantity'])
         name = product['name']
         description = product['description']
-        
+
         product_message = textwrap.dedent(f"""
         {count} PRODUCT
         {name}

@@ -1,7 +1,4 @@
-import dotenv
-import os
 import requests
-from pprint import pprint
 
 
 def get_access_token(client_id, client_secret):
