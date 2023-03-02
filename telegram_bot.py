@@ -40,6 +40,7 @@ def send_menu(client_id, client_secret):
 
 def send_basket(cart_items):
     message = ''
+    total = 0
     keyboard = [[InlineKeyboardButton('Оплатить', callback_data='payment')]]
 
     for product in cart_items['data']:
@@ -48,23 +49,25 @@ def send_basket(cart_items):
         quantity = int(product['quantity'])
         name = product['name']
         description = product['description']
-        product_message = textwrap.dedent(
-            fr"""
-            {count} PRODUCT
-            {name}
-
-            {description}
-
-            ${price} per kg
-            {quantity}kg in cart for ${price * quantity}
-
-            """
-        )
+        
+        product_message = textwrap.dedent(f"""
+        {count} PRODUCT
+        {name}
+        
+        {description}
+        
+        ${price} per kg
+        {quantity}kg in cart for ${price*quantity}
+        
+        """)
         message += product_message
+        total += price * quantity
         keyboard.append([InlineKeyboardButton(f'Убрать из корзины {name}', callback_data=f'{product["id"]}')])
 
     if not message:
         message = 'Basket is empty'
+    else:
+        message += f'TOTAL: ${total}'
 
     keyboard.append([InlineKeyboardButton('В меню', callback_data='back_to_menu')])
     reply_markup = InlineKeyboardMarkup(keyboard)
