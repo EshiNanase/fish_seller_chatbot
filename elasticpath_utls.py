@@ -37,6 +37,14 @@ def get_cart(token, chat_id):
     return response.json()
 
 
+def get_cart_items(token, chat_id):
+    headers = {
+        'Authorization': f'Bearer {token}',
+    }
+    response = requests.get(f'https://api.moltin.com/v2/carts/{chat_id}/items', headers=headers)
+    return response.json()
+
+
 def get_price_book(token, price_book_id):
     headers = {
         'Authorization': f'Bearer {token}',

@@ -9,7 +9,7 @@ from telegram.ext import Filters, Updater
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from functools import partial
-from elasticpath_utls import get_products, get_access_token, get_product, get_file, get_stock, add_products_to_cart
+from elasticpath_utls import get_products, get_access_token, get_product, get_file, get_stock, add_products_to_cart, get_cart_items
 from pprint import pprint
 
 
@@ -42,8 +42,35 @@ def product_detail(bot, update, client_id, client_secret):
     query = update.callback_query
     data = query.data.split(':::')
 
-    product_id = data[0]
     access_token = get_access_token(client_id, client_secret)
+
+    if 'basket' in data:
+        cart_items = get_cart_items(access_token, query.message.chat_id)
+        pprint(cart_items)
+        message = ''
+        for product in cart_items['data']:
+            count = cart_items['data'].index(product) + 1
+            price = int(product['unit_price']['amount'])/100
+            quantity = int(product['quantity'])
+            product_message = textwrap.dedent(
+                fr"""
+                {count} PRODUCT
+                {product['name']}
+                
+                {product['description']}
+                
+                ${price} per kg
+                {quantity}kg in cart for ${price*quantity}
+                
+                """
+            )
+            message += product_message
+        bot.edit_message_text(text=message,
+                              chat_id=query.message.chat_id,
+                              message_id=query.message.message_id
+                              )
+
+    product_id = data[0]
 
     product = get_product(access_token, product_id)
 
@@ -84,6 +111,10 @@ def product_detail(bot, update, client_id, client_secret):
     return "HANDLE_DESCRIPTION"
 
 
+def basket(bot, update, client_id, client_secret):
+    pass
+
+
 def go_back(bot, update, client_id, client_secret):
 
     query = update.callback_query
@@ -94,8 +125,7 @@ def go_back(bot, update, client_id, client_secret):
         data = query.data.split(':::')
         product_id = data[0]
         quantity = int(data[1])
-        response = add_products_to_cart(access_token, query.message.chat_id, product_id, quantity)
-        pprint(response)
+        add_products_to_cart(access_token, query.message.chat_id, product_id, quantity)
         return "HANDLE_MENU"
 
     products = get_products(access_token)
@@ -103,6 +133,7 @@ def go_back(bot, update, client_id, client_secret):
     keyboard = []
     for product in products['data']:
         keyboard.append([InlineKeyboardButton(product['attributes']['name'], callback_data=product['id'])])
+    keyboard.append([InlineKeyboardButton('Корзина', callback_data='basket')])
 
     message = textwrap.dedent(
         """
@@ -125,6 +156,7 @@ def handle_users_reply(bot, update, client_id, client_secret):
     start_credentials = partial(start, client_id=client_id, client_secret=client_secret)
     product_detail_credentials = partial(product_detail, client_id=client_id, client_secret=client_secret)
     go_back_credentials = partial(go_back, client_id=client_id, client_secret=client_secret)
+    basket_credentials = partial(basket, client_id=client_id, client_secret=client_secret)
 
     if update.message:
         user_reply = update.message.text
@@ -141,7 +173,8 @@ def handle_users_reply(bot, update, client_id, client_secret):
     states_functions = {
         'START': start_credentials,
         'HANDLE_MENU': product_detail_credentials,
-        'HANDLE_DESCRIPTION': go_back_credentials
+        'HANDLE_DESCRIPTION': go_back_credentials,
+        'HANDLE_BASKET': basket_credentials
     }
     state_handler = states_functions[user_state]
     try:
