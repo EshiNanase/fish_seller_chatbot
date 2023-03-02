@@ -10,11 +10,12 @@ from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from functools import partial
 from elasticpath_utls import get_products, get_access_token, get_product, get_file, get_stock, add_products_to_cart, get_cart_items, delete_cart_item, create_customer
-from pprint import pprint
+from logger import ChatbotLogsHandler
+
+logger = logging.getLogger(__file__)
 
 
-def start(bot, update, client_id, client_secret):
-
+def send_menu(client_id, client_secret):
     access_token = get_access_token(client_id, client_secret)
     products = get_products(access_token)
 
@@ -33,7 +34,48 @@ def start(bot, update, client_id, client_secret):
     keyboard.append([InlineKeyboardButton('Корзина', callback_data='basket')])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
+
+    return message, reply_markup
+
+
+def send_basket(cart_items):
+    message = ''
+    keyboard = [[InlineKeyboardButton('Оплатить', callback_data='payment')]]
+
+    for product in cart_items['data']:
+        count = cart_items['data'].index(product) + 1
+        price = int(product['unit_price']['amount']) / 100
+        quantity = int(product['quantity'])
+        name = product['name']
+        description = product['description']
+        product_message = textwrap.dedent(
+            fr"""
+            {count} PRODUCT
+            {name}
+
+            {description}
+
+            ${price} per kg
+            {quantity}kg in cart for ${price * quantity}
+
+            """
+        )
+        message += product_message
+        keyboard.append([InlineKeyboardButton(f'Убрать из корзины {name}', callback_data=f'{product["id"]}')])
+
+    if not message:
+        message = 'Basket is empty'
+
+    keyboard.append([InlineKeyboardButton('В меню', callback_data='back_to_menu')])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    return message, reply_markup
+
+
+def start(bot, update, client_id, client_secret):
+    message, reply_markup = send_menu(client_id, client_secret)
     update.message.reply_text(text=message, reply_markup=reply_markup)
+
     return "HANDLE_MENU"
 
 
@@ -46,35 +88,8 @@ def product_detail(bot, update, client_id, client_secret):
 
     if 'basket' in data:
         cart_items = get_cart_items(access_token, query.message.chat_id)
+        message, reply_markup = send_basket(cart_items)
 
-        message = ''
-        keyboard = [[InlineKeyboardButton('Оплатить', callback_data='payment')]]
-        for product in cart_items['data']:
-            count = cart_items['data'].index(product) + 1
-            price = int(product['unit_price']['amount'])/100
-            quantity = int(product['quantity'])
-            name = product['name']
-            description = product['description']
-            product_message = textwrap.dedent(
-                fr"""
-                {count} PRODUCT
-                {name}
-                
-                {description}
-                
-                ${price} per kg
-                {quantity}kg in cart for ${price*quantity}
-                
-                """
-            )
-            message += product_message
-            keyboard.append([InlineKeyboardButton(f'Убрать из корзины {name}', callback_data=f'{product["id"]}')])
-
-        if not message:
-            message = 'Basket is empty'
-
-        keyboard.append([InlineKeyboardButton('В меню', callback_data='back_to_menu')])
-        reply_markup = InlineKeyboardMarkup(keyboard)
         bot.edit_message_text(text=message,
                               chat_id=query.message.chat_id,
                               message_id=query.message.message_id,
@@ -131,23 +146,7 @@ def basket(bot, update, client_id, client_secret):
     access_token = get_access_token(client_id, client_secret)
 
     if data == 'back_to_menu':
-        products = get_products(access_token)
-
-        message = textwrap.dedent(
-            """
-            Внимание, внимание!
-            Открывается веселое гуляние!
-            Торопись, честной народ,
-            Тебя ярмарка зовет!
-            """
-        )
-
-        keyboard = []
-        for product in products['data']:
-            keyboard.append([InlineKeyboardButton(product['attributes']['name'], callback_data=product['id'])])
-        keyboard.append([InlineKeyboardButton('Корзина', callback_data='basket')])
-
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        message, reply_markup = send_menu(client_id, client_secret)
         bot.edit_message_text(text=message,
                               chat_id=query.message.chat_id,
                               message_id=query.message.message_id,
@@ -167,36 +166,8 @@ def basket(bot, update, client_id, client_secret):
     delete_cart_item(access_token, query.message.chat_id, data)
 
     cart_items = get_cart_items(access_token, query.message.chat_id)
+    message, reply_markup = send_basket(cart_items)
 
-    message = ''
-    keyboard = []
-
-    for product in cart_items['data']:
-        count = cart_items['data'].index(product) + 1
-        price = int(product['unit_price']['amount']) / 100
-        quantity = int(product['quantity'])
-        name = product['name']
-        description = product['description']
-        product_message = textwrap.dedent(
-            fr"""
-                    {count} PRODUCT
-                    {name}
-
-                    {description}
-
-                    ${price} per kg
-                    {quantity}kg in cart for ${price * quantity}
-
-                    """
-        )
-        message += product_message
-        keyboard.append([InlineKeyboardButton(f'Убрать из корзины {name}', callback_data=f'{product["id"]}')])
-
-    if not message:
-        message = 'Basket is empty'
-
-    keyboard.append([InlineKeyboardButton('В меню', callback_data='back_to_menu')])
-    reply_markup = InlineKeyboardMarkup(keyboard)
     bot.edit_message_text(text=message,
                           chat_id=query.message.chat_id,
                           message_id=query.message.message_id,
@@ -211,9 +182,13 @@ def waiting_email(bot, update, client_id, client_secret):
 
     email = update.message.text
     chat_id = update.message.chat_id
-    customer = create_customer(access_token, chat_id, email)
+    create_customer(access_token, chat_id, email)
     update.message.reply_text(text=f'Вы отправили мне эту почту {email}')
-    start(bot, update, client_id, client_secret)
+
+    message, reply_markup = send_menu(client_id, client_secret)
+    update.message.reply_text(text=message, reply_markup=reply_markup)
+
+    return "HANDLE_MENU"
 
 
 def go_back(bot, update, client_id, client_secret):
@@ -229,23 +204,8 @@ def go_back(bot, update, client_id, client_secret):
         add_products_to_cart(access_token, query.message.chat_id, product_id, quantity)
         return "HANDLE_MENU"
 
-    products = get_products(access_token)
+    message, reply_markup = send_menu(client_id, client_secret)
 
-    keyboard = []
-    for product in products['data']:
-        keyboard.append([InlineKeyboardButton(product['attributes']['name'], callback_data=product['id'])])
-    keyboard.append([InlineKeyboardButton('Корзина', callback_data='basket')])
-
-    message = textwrap.dedent(
-        """
-        Внимание, внимание!
-        Открывается веселое гуляние!
-        Торопись, честной народ,
-        Тебя ярмарка зовет!
-        """
-    )
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
     bot.send_message(text=message, chat_id=query.message.chat_id, reply_markup=reply_markup)
     bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
 
@@ -288,9 +248,7 @@ def handle_users_reply(bot, update, client_id, client_secret):
 
 
 def get_database_connection(host, port, password):
-    """
-    Возвращает конекшн с базой данных Redis, либо создаёт новый, если он ещё не создан.
-    """
+
     global redis
     database_host = host
     database_port = port
@@ -301,13 +259,16 @@ def get_database_connection(host, port, password):
 def main() -> None:
     dotenv.load_dotenv()
 
-    token = os.environ['TELEGRAM_TOKEN']
+    telegram_token = os.environ['TELEGRAM_TOKEN']
+    telegram_chat_id = os.environ['TELEGRAM_CHAT_ID']
+
+    logging.basicConfig(level=logging.WARNING)
+    logger.addHandler(ChatbotLogsHandler(telegram_chat_id, telegram_token))
 
     redis_host = os.environ['REDIS_HOST']
     redis_port = os.environ['REDIS_PORT']
     redis_password = os.environ['REDIS_PASSWORD']
 
-    moltin_application_key = os.environ['MOLTIN_APPLICATION_KEY']
     moltin_client_id = os.environ['MOLTIN_CLIENT_ID']
     moltin_secret_key = os.environ['MOLTIN_SECRET_KEY']
 
@@ -315,7 +276,7 @@ def main() -> None:
 
     handle_users_reply_moltin = partial(handle_users_reply, client_id=moltin_client_id, client_secret=moltin_secret_key)
 
-    updater = Updater(token)
+    updater = Updater(telegram_token)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(CallbackQueryHandler(handle_users_reply_moltin))
     dispatcher.add_handler(MessageHandler(Filters.text, handle_users_reply_moltin))

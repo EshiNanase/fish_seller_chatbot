@@ -138,18 +138,3 @@ def get_file(token, file_id):
     }
     response = requests.get(f'https://api.moltin.com/v2/files/{file_id}', headers=headers)
     return response.json()
-
-
-def main() -> None:
-    dotenv.load_dotenv()
-
-    moltin_application_key = os.environ['MOLTIN_APPLICATION_KEY']
-    moltin_client_id = os.environ['MOLTIN_CLIENT_ID']
-    moltin_secret_key = os.environ['MOLTIN_SECRET_KEY']
-    moltin_access_token = get_access_token(moltin_client_id, moltin_secret_key)
-    pprint(add_products_to_cart(moltin_access_token, '362428124', '6b2c2147-9c2b-4f37-9d14-2f1eb5194da9', 10))
-    pprint(get_cart(moltin_access_token, '362428124'))
-
-
-if __name__ == '__main__':
-    main()
