@@ -4,8 +4,7 @@ Bot for selling fish  ζº͜))))&gt;&gt;&lt;
 
 ![](https://github.com/EshiNanase/fish_seller_chatbot/blob/main/example.gif)
 
-Example:
-Telegram: https://t.me/ultimate_fish_seller_chatbot
+Example: https://t.me/ultimate_fish_seller_chatbot
 
 ## Prerequisites
 
