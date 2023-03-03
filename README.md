@@ -4,8 +4,7 @@ Bot for selling fish  ζº͜))))&gt;&gt;&lt;
 
 ![](https://github.com/EshiNanase/fish_seller_chatbot/blob/main/example.gif)
 
-Example:
-Telegram: https://t.me/ultimate_fish_seller_chatbot
+Example: https://t.me/ultimate_fish_seller_chatbot
 
 ## Prerequisites
 
@@ -30,7 +29,7 @@ Third, you need to create a shop on elasticpath.com:
 ```
 https://euwest.cm.elasticpath.com/
 ```
-Forth, in this shop you need to create:
+Fourth, in this shop you need to create:
 ```
 Products on elasticpath.com/products page, then define price and set them live
 Price Book on elasticpath.com/pricebooks page and add created products
