@@ -1,5 +1,6 @@
 import os
 import textwrap
+import time
 
 import dotenv
 import logging
@@ -9,85 +10,24 @@ from telegram.ext import Filters, Updater
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from functools import partial
-from elasticpath_utls import get_products, get_access_token, get_product, get_file, get_stock, add_products_to_cart, get_cart_items, delete_cart_item, create_customer
+from elasticpath import get_access_token, get_product, get_file, get_stock, add_products_to_cart, get_cart_items, delete_cart_item, create_customer
+from telegram_send import send_basket, send_menu
 from logger import ChatbotLogsHandler
 
 logger = logging.getLogger(__file__)
 
 
-def send_menu(client_id, client_secret):
-    access_token = get_access_token(client_id, client_secret)
-    products = get_products(access_token)
-
-    message = textwrap.dedent(
-        """
-        Внимание, внимание!
-        Открывается веселое гуляние!
-        Торопись, честной народ,
-        Тебя ярмарка зовет!
-        """
-    )
-
-    keyboard = []
-    for product in products['data']:
-        keyboard.append([InlineKeyboardButton(product['attributes']['name'], callback_data=product['id'])])
-    keyboard.append([InlineKeyboardButton('Корзина', callback_data='basket')])
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    return message, reply_markup
-
-
-def send_basket(cart_items):
-    message = ''
-    total = 0
-    keyboard = [[InlineKeyboardButton('Оплатить', callback_data='payment')]]
-
-    for product in cart_items['data']:
-        count = cart_items['data'].index(product) + 1
-        price = int(product['unit_price']['amount']) / 100
-        quantity = int(product['quantity'])
-        name = product['name']
-        description = product['description']
-
-        product_message = textwrap.dedent(f"""
-        {count} PRODUCT
-        {name}
-        
-        {description}
-        
-        ${price} per kg
-        {quantity}kg in cart for ${price*quantity}
-        
-        """)
-        message += product_message
-        total += price * quantity
-        keyboard.append([InlineKeyboardButton(f'Убрать из корзины {name}', callback_data=f'{product["id"]}')])
-
-    if not message:
-        message = 'Basket is empty'
-    else:
-        message += f'TOTAL: ${total}'
-
-    keyboard.append([InlineKeyboardButton('В меню', callback_data='back_to_menu')])
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    return message, reply_markup
-
-
-def start(bot, update, client_id, client_secret):
-    message, reply_markup = send_menu(client_id, client_secret)
+def start(bot, update, access_token):
+    message, reply_markup = send_menu(access_token)
     update.message.reply_text(text=message, reply_markup=reply_markup)
 
     return "HANDLE_MENU"
 
 
-def product_detail(bot, update, client_id, client_secret):
+def get_product_detail(bot, update, access_token):
 
     query = update.callback_query
     data = query.data.split(':::')
-
-    access_token = get_access_token(client_id, client_secret)
 
     if 'basket' in data:
         cart_items = get_cart_items(access_token, query.message.chat_id)
@@ -141,15 +81,13 @@ def product_detail(bot, update, client_id, client_secret):
     return "HANDLE_DESCRIPTION"
 
 
-def basket(bot, update, client_id, client_secret):
+def get_basket(bot, update, access_token):
 
     query = update.callback_query
     data = query.data
 
-    access_token = get_access_token(client_id, client_secret)
-
     if data == 'back_to_menu':
-        message, reply_markup = send_menu(client_id, client_secret)
+        message, reply_markup = send_menu(access_token)
         bot.edit_message_text(text=message,
                               chat_id=query.message.chat_id,
                               message_id=query.message.message_id,
@@ -179,26 +117,22 @@ def basket(bot, update, client_id, client_secret):
     return "HANDLE_BASKET"
 
 
-def waiting_email(bot, update, client_id, client_secret):
-
-    access_token = get_access_token(client_id, client_secret)
+def wait_for_email(bot, update, access_token):
 
     email = update.message.text
     chat_id = update.message.chat_id
     create_customer(access_token, chat_id, email)
     update.message.reply_text(text=f'Вы отправили мне эту почту {email}')
 
-    message, reply_markup = send_menu(client_id, client_secret)
+    message, reply_markup = send_menu(access_token)
     update.message.reply_text(text=message, reply_markup=reply_markup)
 
     return "HANDLE_MENU"
 
 
-def go_back(bot, update, client_id, client_secret):
+def go_back(bot, update, access_token):
 
     query = update.callback_query
-
-    access_token = get_access_token(client_id, client_secret)
 
     if query.data != 'back':
         data = query.data.split(':::')
@@ -207,7 +141,7 @@ def go_back(bot, update, client_id, client_secret):
         add_products_to_cart(access_token, query.message.chat_id, product_id, quantity)
         return "HANDLE_MENU"
 
-    message, reply_markup = send_menu(client_id, client_secret)
+    message, reply_markup = send_menu(access_token)
 
     bot.send_message(text=message, chat_id=query.message.chat_id, reply_markup=reply_markup)
     bot.delete_message(chat_id=query.message.chat_id, message_id=query.message.message_id)
@@ -215,13 +149,16 @@ def go_back(bot, update, client_id, client_secret):
     return "HANDLE_MENU"
 
 
-def handle_users_reply(bot, update, client_id, client_secret):
+def handle_users_reply(bot, update, access_token, timestamp, client_id, client_secret, redis):
 
-    start_credentials = partial(start, client_id=client_id, client_secret=client_secret)
-    product_detail_credentials = partial(product_detail, client_id=client_id, client_secret=client_secret)
-    go_back_credentials = partial(go_back, client_id=client_id, client_secret=client_secret)
-    basket_credentials = partial(basket, client_id=client_id, client_secret=client_secret)
-    waiting_email_credentials = partial(waiting_email, client_id=client_id, client_secret=client_secret)
+    if timestamp + 3600 < time.time():
+        access_token, timestamp = get_access_token(client_id, client_secret)
+
+    start_credentials = partial(start, access_token=access_token)
+    get_product_detail_credentials = partial(get_product_detail, access_token=access_token)
+    go_back_credentials = partial(go_back, access_token=access_token)
+    get_basket_credentials = partial(get_basket, access_token=access_token)
+    wait_for_email_credentials = partial(wait_for_email, access_token=access_token)
 
     if update.message:
         user_reply = update.message.text
@@ -235,12 +172,13 @@ def handle_users_reply(bot, update, client_id, client_secret):
         user_state = 'START'
     else:
         user_state = redis.get(chat_id).decode("utf-8")
+
     states_functions = {
         'START': start_credentials,
-        'HANDLE_MENU': product_detail_credentials,
+        'HANDLE_MENU': get_product_detail_credentials,
         'HANDLE_DESCRIPTION': go_back_credentials,
-        'HANDLE_BASKET': basket_credentials,
-        'WAITING_EMAIL': waiting_email_credentials
+        'HANDLE_BASKET': get_basket_credentials,
+        'WAITING_EMAIL': wait_for_email_credentials
     }
     state_handler = states_functions[user_state]
     try:
@@ -248,15 +186,6 @@ def handle_users_reply(bot, update, client_id, client_secret):
         redis.set(chat_id, next_state)
     except Exception as err:
         print(err)
-
-
-def get_database_connection(host, port, password):
-
-    global redis
-    database_host = host
-    database_port = port
-    database_password = password
-    redis = r.Redis(host=database_host, port=database_port, password=database_password)
 
 
 def main() -> None:
@@ -271,13 +200,20 @@ def main() -> None:
     redis_host = os.environ['REDIS_HOST']
     redis_port = os.environ['REDIS_PORT']
     redis_password = os.environ['REDIS_PASSWORD']
+    redis = r.Redis(host=redis_host, port=redis_port, password=redis_password)
 
     moltin_client_id = os.environ['MOLTIN_CLIENT_ID']
     moltin_secret_key = os.environ['MOLTIN_SECRET_KEY']
+    moltin_access_token, timestamp = get_access_token(moltin_client_id, moltin_secret_key)
 
-    get_database_connection(redis_host, redis_port, redis_password)
-
-    handle_users_reply_moltin = partial(handle_users_reply, client_id=moltin_client_id, client_secret=moltin_secret_key)
+    handle_users_reply_moltin = partial(
+        handle_users_reply,
+        client_id=moltin_client_id,
+        access_token=moltin_access_token,
+        timestamp=timestamp,
+        client_secret=moltin_secret_key,
+        redis=redis
+    )
 
     updater = Updater(telegram_token)
     dispatcher = updater.dispatcher
