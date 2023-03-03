@@ -13,6 +13,7 @@ from functools import partial
 from elasticpath import get_access_token, get_product, get_file, get_stock, add_products_to_cart, get_cart_items, delete_cart_item, create_customer
 from telegram_send import send_basket, send_menu
 from logger import ChatbotLogsHandler
+import elasticpath
 
 logger = logging.getLogger(__file__)
 
@@ -149,10 +150,11 @@ def go_back(bot, update, access_token):
     return "HANDLE_MENU"
 
 
-def handle_users_reply(bot, update, access_token, timestamp, client_id, client_secret, redis):
+def handle_users_reply(bot, update, access_token, client_id, client_secret, redis):
 
-    if timestamp + 3600 < time.time():
+    if elasticpath.TIMESTAMP <= time.time():
         access_token, timestamp = get_access_token(client_id, client_secret)
+        elasticpath.TIMESTAMP = timestamp
 
     start_credentials = partial(start, access_token=access_token)
     get_product_detail_credentials = partial(get_product_detail, access_token=access_token)
@@ -205,18 +207,19 @@ def main() -> None:
     moltin_client_id = os.environ['MOLTIN_CLIENT_ID']
     moltin_secret_key = os.environ['MOLTIN_SECRET_KEY']
     moltin_access_token, timestamp = get_access_token(moltin_client_id, moltin_secret_key)
+    elasticpath.TIMESTAMP = timestamp
 
     handle_users_reply_moltin = partial(
         handle_users_reply,
         client_id=moltin_client_id,
         access_token=moltin_access_token,
-        timestamp=timestamp,
         client_secret=moltin_secret_key,
         redis=redis
     )
 
     updater = Updater(telegram_token)
     dispatcher = updater.dispatcher
+
     dispatcher.add_handler(CallbackQueryHandler(handle_users_reply_moltin))
     dispatcher.add_handler(MessageHandler(Filters.text, handle_users_reply_moltin))
     dispatcher.add_handler(CommandHandler('start', handle_users_reply_moltin))

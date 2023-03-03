@@ -1,5 +1,6 @@
 import requests
-import time
+
+TIMESTAMP = None
 
 
 def get_access_token(client_id, client_secret):
@@ -13,7 +14,8 @@ def get_access_token(client_id, client_secret):
     response = requests.post('https://api.moltin.com/oauth/access_token', data=payload)
     response.raise_for_status()
     token = response.json()['access_token']
-    return token, time.time()
+    timestamp = response.json()['expires']
+    return token, timestamp
 
 
 def get_access_token_implicit(client_id):
